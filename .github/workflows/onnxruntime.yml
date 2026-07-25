@@ -1,0 +1,78 @@
+name: Validate ONNX Runtime CPU
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/onnx-runtime
+    paths:
+      - .github/workflows/onnxruntime.yml
+      - ports/onnxruntime/**
+      - vcpkg.json
+  pull_request:
+    paths:
+      - .github/workflows/onnxruntime.yml
+      - ports/onnxruntime/**
+      - vcpkg.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: onnxruntime-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-2025
+            triplet: x64-windows-release
+            bootstrap: .\bootstrap-vcpkg.bat
+            vcpkg: .\vcpkg.exe
+            architecture: $env:PROCESSOR_ARCHITECTURE
+          - name: Ubuntu 24.04 ARM64
+            runner: ubuntu-24.04-arm
+            triplet: arm64-linux-release
+            bootstrap: ./bootstrap-vcpkg.sh
+            vcpkg: ./vcpkg
+            architecture: uname -m
+    env:
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/vcpkg-binary-cache,readwrite
+      VCPKG_DEFAULT_TRIPLET: ${{ matrix.triplet }}
+      VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.triplet }}
+      VCPKG_MAX_CONCURRENCY: 3
+    steps:
+      - name: Check out vcpkg fork
+        uses: actions/checkout@v7
+
+      - name: Restore binary cache
+        uses: actions/cache@v5
+        with:
+          path: vcpkg-binary-cache
+          key: onnxruntime-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('ports/onnxruntime/**', 'vcpkg.json') }}
+
+      - name: Create binary cache
+        run: cmake -E make_directory "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Verify native architecture
+        run: ${{ matrix.architecture }}
+
+      - name: Bootstrap vcpkg
+        run: ${{ matrix.bootstrap }}
+
+      - name: Build ONNX Runtime CPU
+        run: >-
+          ${{ matrix.vcpkg }} install
+          onnxruntime:${{ matrix.triplet }}
+          --clean-after-build
+          --x-abi-tools-use-exact-versions
+
+      - name: Record installed package
+        run: ${{ matrix.vcpkg }} list onnxruntime

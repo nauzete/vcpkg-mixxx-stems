@@ -89,6 +89,10 @@
     "lilv",
     "mp3lame",
     "ms-gsl",
+    {
+      "name": "onnxruntime",
+      "platform": "windows | linux"
+    },
     "opus",
     "opusfile",
     {
